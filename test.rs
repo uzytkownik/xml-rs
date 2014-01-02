@@ -37,3 +37,41 @@ fn test_simple_fail() {
     let doc = xml::read_memory(xml);
     assert!(doc.is_none());
 }
+
+#[test]
+fn test_subelements() {
+    let xml = "<?xml version=\"1.0\"?> <test> <a> <b></b>aaa</a><c/></test>".as_bytes();
+    let doc = xml::read_memory(xml).unwrap();
+    let root = doc.get_root_element().unwrap();
+    assert_eq!(root.name(), ~"test");
+    let mut iter = root.children_iter();
+    {
+        let cur = iter.next().unwrap().get_text().unwrap();
+        assert_eq!(cur.content(), ~" ");
+    }
+    {
+        let cur = iter.next().unwrap().get_element().unwrap();
+        assert_eq!(cur.name(), ~"a");
+        let mut iter = cur.children_iter();
+        {
+            let cur = iter.next().unwrap().get_text().unwrap();
+            assert_eq!(cur.content(), ~" ");
+        }
+        {
+            let cur = iter.next().unwrap().get_element().unwrap();
+            assert_eq!(cur.name(), ~"b");
+            assert!(cur.children_iter().next().is_none());
+        }
+        {
+            let cur = iter.next().unwrap().get_text().unwrap();
+            assert_eq!(cur.content(), ~"aaa");            
+        }
+        assert!(iter.next().is_none());
+    }
+    {
+        let cur = iter.next().unwrap().get_element().unwrap();
+        assert_eq!(cur.name(), ~"c");
+        assert!(cur.children_iter().next().is_none());
+    }
+    assert!(iter.next().is_none());
+}

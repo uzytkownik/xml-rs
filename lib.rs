@@ -124,6 +124,37 @@ impl<'r> Iterator<ElementChildren<'r>> for ElementChildrenIterator<'r> {
     }
 }
 
+impl<'r> ElementChildren<'r> {
+    /// Check if children is an element.
+    pub fn is_element(self) -> bool {
+        match (self) {
+            ElementElementChild(_) => true,
+            _ => false
+        }
+    }
+    /// Check if children is text.
+    pub fn is_text(self) -> bool {
+        match (self) {
+            TextElementChild(_) => true,
+            _ => false
+        }
+    }
+    /// Get element if it is an element.
+    pub fn get_element(self) -> Option<Element<'r>> {
+        match (self) {
+            ElementElementChild(e) => Some(e),
+            _ => None
+        }
+    }
+    /// Get text if it is text.
+    pub fn get_text(self) -> Option<Text<'r>> {
+        match (self) {
+            TextElementChild(t) => Some(t),
+            _ => None
+        }
+    }
+}
+
 impl<'r> Text<'r> {
     pub fn content(&self) -> ~str {
         unsafe {
