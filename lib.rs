@@ -23,6 +23,7 @@
 #[comment = "Wrapper for libxml2's DOM parser."];
 #[crate_id = "github.com/uzytkownik/xml-rs#xml:0.1"];
 #[crate_type = "lib"];
+#[license = "MIT"];
 
 extern mod extra;
 
