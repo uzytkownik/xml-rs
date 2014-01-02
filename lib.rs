@@ -44,6 +44,13 @@ pub struct Element<'r> {
 }
 
 /**
+ * Iterator over children of XML element
+ */
+pub struct ElementChildrenIterator<'r> {
+    priv cur: Option<&'r ffi::xmlNode>
+}
+
+/**
  * Text inside an XML.
  */
 pub struct Text<'r> {
@@ -86,19 +93,31 @@ impl<'r> Element<'r> {
         unsafe {std::str::raw::from_c_str(self.node.name as *i8)}
     }
     /**
-     * Finds all children of the element.
+     * Iterate over children
      */
-    pub fn children(&self) -> ~[ElementChildren<'r>] {
-        std::vec::build(None, |push| {
-            unsafe {
-                let mut cur = self.node.children;
-                while (std::ptr::is_not_null(cur)) {
-                    match (*cur)._type {
-                        ffi::ElementNode => push(ElementElementChild(Element {node: &*cur})),
-                        ffi::TextNode => push(TextElementChild(Text {node: &*cur})),
-                        t => error!("Unsupported type {}", t.to_str())
-                    }
-                    cur = (*cur).next;
+    pub fn children_iter(&self) -> ElementChildrenIterator<'r> {
+        ElementChildrenIterator {
+            cur: ptr_to_option(self.node.children).map(|cur| unsafe {&*cur})
+        }
+    }
+}
+
+impl<'r> Clone for ElementChildrenIterator<'r> {
+    fn clone(&self) -> ElementChildrenIterator<'r> {
+        ElementChildrenIterator{cur: self.cur}
+    }
+}
+
+impl<'r> Iterator<ElementChildren<'r>> for ElementChildrenIterator<'r> {
+     fn next(&mut self) -> Option<ElementChildren<'r>> {
+        self.cur.and_then(|cur| {
+            self.cur = unsafe {ptr_to_option(cur.next).map(|next| &*next)};
+            match cur._type {
+                ffi::ElementNode => Some(ElementElementChild(Element {node: cur})),
+                ffi::TextNode => Some(TextElementChild(Text {node: cur})),
+                t => {
+                    error!("Unsupported type {}", t.to_str());
+                    self.next()
                 }
             }
         })

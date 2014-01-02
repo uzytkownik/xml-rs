@@ -28,6 +28,7 @@ fn test_simple_parse() {
     let doc = xml::read_memory(xml).unwrap();
     let root = doc.get_root_element().unwrap();
     assert_eq!(root.name(), ~"test");
+    assert!(root.children_iter().next().is_none());
 }
 
 #[test]
