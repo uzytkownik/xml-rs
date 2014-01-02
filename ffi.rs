@@ -25,6 +25,7 @@ use std::libc::{c_char, c_int, c_uchar, c_ushort, c_void};
 pub type xmlChar = c_uchar;
 
 #[deriving(ToStr)]
+#[repr(C)]
 pub enum xmlElementType {
     ElementNode = 1,
     AttributeNode = 2,
@@ -85,6 +86,7 @@ pub struct xmlAttribute {
 }
 
 #[allow(dead_code)]
+#[repr(C)]
 pub enum xmlAttributeDefault {
     None = 1,
     Required = 2,
@@ -92,6 +94,7 @@ pub enum xmlAttributeDefault {
     Fixed = 4
 }
 
+#[repr(C)]
 pub enum xmlAttributeType {
     CDATA = 1,
     ID = 2,
@@ -170,6 +173,7 @@ pub struct xmlElement {
 }
 
 #[allow(dead_code)]
+#[repr(C)]
 pub enum xmlElementTypeVal {
     Undefined,
     Empty,
@@ -190,6 +194,7 @@ pub struct xmlElementContent {
 }
 
 #[allow(dead_code)]
+#[repr(C)]
 pub enum xmlElementContentType {
     PCData,
     ElementContent,
@@ -198,6 +203,7 @@ pub enum xmlElementContentType {
 }
 
 #[allow(dead_code)]
+#[repr(C)]
 pub enum xmlElementContentOccur {
     Once,
     Opt,
@@ -228,6 +234,7 @@ pub struct xmlEntity {
 }
 
 #[allow(dead_code)]
+#[repr(C)]
 pub enum xmlEntityType {
     InternalGeneralEntity = 1,
     ExternalGeneralParsedEntity = 2,
