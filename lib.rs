@@ -58,28 +58,22 @@ pub enum ElementChildren<'r> {
     TextElementChild(Text<'r>)
 }
 
-#[unsafe_destructor]
-impl Drop for Document {
-    fn drop(&mut self) {
-        unsafe {
-            ffi::xmlFreeDoc(self.doc);
-        }
-    }
-}
-
 impl Document {
     /**
      * Find the root element, if it exists.
      */
     pub fn get_root_element<'r>(&'r self) -> Option<Element<'r>> {
-        use std::ptr::is_not_null;
         unsafe {
-            let elem = ffi::xmlDocGetRootElement(self.doc);
-            if (is_not_null(elem)) {
-                Some(Element {node: &*elem})
-            } else {
-                None
-            }
+            ptr_to_option(ffi::xmlDocGetRootElement(self.doc)).map(|elem| Element{node: &*elem})
+        }
+    }
+}
+
+#[unsafe_destructor]
+impl Drop for Document {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::xmlFreeDoc(self.doc);
         }
     }
 }
@@ -127,16 +121,12 @@ impl<'r> Text<'r> {
 pub fn read_memory_with_url(buffer: &[u8], url: Option<&str>) -> Option<Document> {
     unsafe {
         use std::libc::c_int;
-        use std::ptr::{null,is_not_null};
+        use std::ptr::null;
         ffi::xmlCheckVersion(ffi::xmlVersion);
         let doc = ffi::xmlReadMemory(buffer.as_ptr(), buffer.len() as c_int,
                                      url.map(|x| x.as_ptr()).unwrap_or(null()) as *i8,
                                      null(), 64 | 32 /* No errors or warnings for now */);
-        if (is_not_null(doc)) {
-            Some(Document {doc: doc})
-        } else {
-            None
-        }
+        ptr_to_option(doc).map(|doc| Document {doc: doc})
     }
 }
 
@@ -145,4 +135,12 @@ pub fn read_memory_with_url(buffer: &[u8], url: Option<&str>) -> Option<Document
  */
 pub fn read_memory(buffer: &[u8]) -> Option<Document> {
     read_memory_with_url(buffer, None)
+}
+
+fn ptr_to_option<T>(ptr: *T) -> Option<*T> {
+    if (std::ptr::is_not_null(ptr)) {
+        Some(ptr)
+    } else {
+        None
+    }
 }
