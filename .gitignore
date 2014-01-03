@@ -1,2 +1,4 @@
 .rust/
 doc/
+build/
+lib/
