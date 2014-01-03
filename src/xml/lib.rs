@@ -30,6 +30,20 @@ extern mod extra;
 mod ffi;
 
 /**
+ * An XML node that contains text.
+ */
+pub trait TextNode {
+    fn content(&self) -> ~str;
+}
+
+/**
+ * A CDATA section.
+ */
+pub struct CData<'r> {
+    priv node: &'r ffi::xmlNode
+}
+
+/**
  * An XML document.
  */
 pub struct Document {
@@ -62,7 +76,8 @@ pub struct Text<'r> {
  */
 pub enum ElementChildren<'r> {
     ElementElementChild(Element<'r>),
-    TextElementChild(Text<'r>)
+    TextElementChild(Text<'r>),
+    CDataElementChild(CData<'r>),
 }
 
 impl Document {
@@ -115,6 +130,7 @@ impl<'r> Iterator<ElementChildren<'r>> for ElementChildrenIterator<'r> {
             match cur._type {
                 ffi::ElementNode => Some(ElementElementChild(Element {node: cur})),
                 ffi::TextNode => Some(TextElementChild(Text {node: cur})),
+                ffi::CDataSectionNode => Some(CDataElementChild(CData {node: cur})),
                 t => {
                     error!("Unsupported type {}", t.to_str());
                     self.next()
@@ -139,6 +155,13 @@ impl<'r> ElementChildren<'r> {
             _ => false
         }
     }
+    /// Check if children is CDATA section
+    pub fn is_cdata(self) -> bool {
+        match (self) {
+            CDataElementChild(_) => true,
+            _ => false
+        }
+    }
     /// Get element if it is an element.
     pub fn get_element(self) -> Option<Element<'r>> {
         match (self) {
@@ -153,10 +176,25 @@ impl<'r> ElementChildren<'r> {
             _ => None
         }
     }
+    /// Get cdata section if it is cdata section.
+    pub fn get_cdata(self) -> Option<CData<'r>> {
+        match (self) {
+            CDataElementChild(cd) => Some(cd),
+            _ => None
+        }
+    }
 }
 
-impl<'r> Text<'r> {
-    pub fn content(&self) -> ~str {
+impl<'r> TextNode for CData<'r> {
+    fn content(&self) -> ~str {
+        unsafe {
+            std::str::raw::from_c_str(self.node.content as *i8)
+        }
+    }
+}
+
+impl<'r> TextNode for Text<'r> {
+    fn content(&self) -> ~str {
         unsafe {
             std::str::raw::from_c_str(self.node.content as *i8)
         }

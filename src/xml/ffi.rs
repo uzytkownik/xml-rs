@@ -30,7 +30,7 @@ pub enum xmlElementType {
     ElementNode = 1,
     AttributeNode = 2,
     TextNode = 3,
-    CDATASectionNode = 4,
+    CDataSectionNode = 4,
     EntityRefNode = 5,
     EntityNode = 6,
     PINode = 7,

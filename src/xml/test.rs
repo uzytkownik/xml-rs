@@ -24,6 +24,18 @@
 
 extern mod xml;
 
+macro_rules! expect_cdata(
+    ($iter:ident, $expected_text:expr) => ({
+        use xml::TextNode;
+        let next = ($iter).next();
+        assert!(next.is_some(), "Expected CDATA section but there is no further element");
+        let text = next.unwrap().get_cdata();
+        assert!(text.is_some(), "Extected CDATA section but got other children");
+        let cur = text.unwrap();
+        assert_eq!(cur.content(), $expected_text);
+    });
+)
+
 macro_rules! expect_root_elem(
     ($root:expr, $iter:ident, $expected_name:expr, $elem_check:expr) => ({
         assert_eq!($root.name(), $expected_name);
@@ -53,6 +65,7 @@ macro_rules! expect_elem(
 
 macro_rules! expect_text(
     ($iter:ident, $expected_text:expr) => ({
+        use xml::TextNode;
         let next = ($iter).next();
         assert!(next.is_some(), "Expected text but there is no further element");
         let text = next.unwrap().get_text();
@@ -79,11 +92,12 @@ fn test_simple_parse() {
 
 #[test]
 fn test_subelements() {
-    let xml = "<?xml version=\"1.0\"?> <test> <a> <b></b>aaa</a><c/></test>".as_bytes();
+    let xml = "<?xml version=\"1.0\"?> <test> <![CDATA[test]]><a> <b></b>aaa</a><c/></test>".as_bytes();
     let doc = xml::read_memory(xml).unwrap();
     let root = doc.get_root_element().unwrap();
     expect_root_elem!(root, iter, ~"test", {
         expect_text!(iter, ~" ");
+        expect_cdata!(iter, ~"test");
         expect_elem!(iter, ~"a", {
             expect_text!(iter, ~" ");
             expect_elem!(iter, ~"b", {});
