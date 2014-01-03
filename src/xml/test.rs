@@ -36,6 +36,18 @@ macro_rules! expect_cdata(
     });
 )
 
+macro_rules! expect_comment(
+    ($iter:ident, $expected_text:expr) => ({
+        let next = ($iter).next();
+        assert!(next.is_some(), "Expected comment but there is no further element");
+        let text = next.unwrap().get_comment();
+        assert!(text.is_some(), "Extected comment but got other children");
+        let cur = text.unwrap();
+        assert_eq!(cur.comment(), $expected_text);
+    });
+)
+
+
 macro_rules! expect_root_elem(
     ($root:expr, $iter:ident, $expected_name:expr, $elem_check:expr) => ({
         assert_eq!($root.name(), $expected_name);
@@ -92,7 +104,7 @@ fn test_simple_parse() {
 
 #[test]
 fn test_subelements() {
-    let xml = "<?xml version=\"1.0\"?> <test> <![CDATA[test]]><a> <b></b>aaa</a><c/></test>".as_bytes();
+    let xml = "<?xml version=\"1.0\"?> <test> <![CDATA[test]]><a> <b></b>aaa<!-- comment --></a><c/></test>".as_bytes();
     let doc = xml::read_memory(xml).unwrap();
     let root = doc.get_root_element().unwrap();
     expect_root_elem!(root, iter, ~"test", {
@@ -102,6 +114,7 @@ fn test_subelements() {
             expect_text!(iter, ~" ");
             expect_elem!(iter, ~"b", {});
             expect_text!(iter, ~"aaa");
+            expect_comment!(iter, ~" comment ");
         });
         expect_elem!(iter, ~"c", {});
     });

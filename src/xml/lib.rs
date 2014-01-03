@@ -44,6 +44,13 @@ pub struct CData<'r> {
 }
 
 /**
+ * An XML comment.
+ */
+pub struct Comment<'r> {
+    priv node: &'r ffi::xmlNode
+}
+
+/**
  * An XML document.
  */
 pub struct Document {
@@ -78,6 +85,7 @@ pub enum ElementChildren<'r> {
     ElementElementChild(Element<'r>),
     TextElementChild(Text<'r>),
     CDataElementChild(CData<'r>),
+    CommentElementChild(Comment<'r>)
 }
 
 impl Document {
@@ -96,6 +104,15 @@ impl Drop for Document {
     fn drop(&mut self) {
         unsafe {
             ffi::xmlFreeDoc(self.doc);
+        }
+    }
+}
+
+impl<'r> Comment<'r> {
+    /// Get comment contents.
+    pub fn comment(&self) -> ~str {
+        unsafe {
+            std::str::raw::from_c_str(self.node.content as *i8)
         }
     }
 }
@@ -131,6 +148,7 @@ impl<'r> Iterator<ElementChildren<'r>> for ElementChildrenIterator<'r> {
                 ffi::ElementNode => Some(ElementElementChild(Element {node: cur})),
                 ffi::TextNode => Some(TextElementChild(Text {node: cur})),
                 ffi::CDataSectionNode => Some(CDataElementChild(CData {node: cur})),
+                ffi::CommentNode => Some(CommentElementChild(Comment {node: cur})),
                 t => {
                     error!("Unsupported type {}", t.to_str());
                     self.next()
@@ -162,6 +180,13 @@ impl<'r> ElementChildren<'r> {
             _ => false
         }
     }
+    /// Check if children is a comment.
+    pub fn is_comment(self) -> bool {
+        match (self) {
+            CommentElementChild(_) => true,
+            _ => false
+        }
+    }
     /// Get element if it is an element.
     pub fn get_element(self) -> Option<Element<'r>> {
         match (self) {
@@ -180,6 +205,13 @@ impl<'r> ElementChildren<'r> {
     pub fn get_cdata(self) -> Option<CData<'r>> {
         match (self) {
             CDataElementChild(cd) => Some(cd),
+            _ => None
+        }
+    }
+    // Get comment if it is a comment.
+    pub fn get_comment(self) -> Option<Comment<'r>> {
+    match (self) {
+            CommentElementChild(c) => Some(c),
             _ => None
         }
     }
