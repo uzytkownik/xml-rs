@@ -81,7 +81,7 @@ pub struct Text<'r> {
 /**
  * Possible children of an element.
  */
-pub enum ElementChildren<'r> {
+pub enum ElementChild<'r> {
     ElementElementChild(Element<'r>),
     TextElementChild(Text<'r>),
     CDataElementChild(CData<'r>),
@@ -140,8 +140,8 @@ impl<'r> Clone for ElementChildrenIterator<'r> {
     }
 }
 
-impl<'r> Iterator<ElementChildren<'r>> for ElementChildrenIterator<'r> {
-     fn next(&mut self) -> Option<ElementChildren<'r>> {
+impl<'r> Iterator<ElementChild<'r>> for ElementChildrenIterator<'r> {
+     fn next(&mut self) -> Option<ElementChild<'r>> {
         self.cur.and_then(|cur| {
             self.cur = unsafe {ptr_to_option(cur.next).map(|next| &*next)};
             match cur._type {
@@ -158,29 +158,29 @@ impl<'r> Iterator<ElementChildren<'r>> for ElementChildrenIterator<'r> {
     }
 }
 
-impl<'r> ElementChildren<'r> {
-    /// Check if children is an element.
+impl<'r> ElementChild<'r> {
+    /// Check if child is an element.
     pub fn is_element(self) -> bool {
         match (self) {
             ElementElementChild(_) => true,
             _ => false
         }
     }
-    /// Check if children is text.
+    /// Check if child is text.
     pub fn is_text(self) -> bool {
         match (self) {
             TextElementChild(_) => true,
             _ => false
         }
     }
-    /// Check if children is CDATA section
+    /// Check if child is CDATA section
     pub fn is_cdata(self) -> bool {
         match (self) {
             CDataElementChild(_) => true,
             _ => false
         }
     }
-    /// Check if children is a comment.
+    /// Check if child is a comment.
     pub fn is_comment(self) -> bool {
         match (self) {
             CommentElementChild(_) => true,
