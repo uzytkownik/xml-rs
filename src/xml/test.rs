@@ -24,6 +24,21 @@
 
 extern mod xml;
 
+macro_rules! expect_attribute(
+    ($iter:ident, $expected_name:expr, $expected_value:expr, $attribute_check:expr) => ({
+        let next = ($iter).next();
+        assert!(next.is_some(), "Expected next attribute - there is none");
+        let attr = next.unwrap();
+        assert_eq!(attr.name(), $expected_name);
+        assert_eq!(attr.value(), $expected_value);
+        {
+            let mut $iter = attr.children_iter();
+            $attribute_check;
+            assert!($iter.next().is_none(), "Unexpected children");
+        }
+    })
+)
+
 macro_rules! expect_cdata(
     ($iter:ident, $expected_text:expr) => ({
         use xml::TextNode;
@@ -56,6 +71,19 @@ macro_rules! expect_root_elem(
             $elem_check;
             assert!($iter.next().is_none(), "Unexpected children");
         }
+    });
+    ($root:expr, $iter:ident, $expected_name:expr, $attr_check:expr, $elem_check:expr) => ({
+        assert_eq!($root.name(), $expected_name);
+        {
+            let mut $iter = $root.attribute_iter();
+            $attr_check;
+            assert!($iter.next().is_none(), "Unexpected attribute");
+        }
+        {
+            let mut $iter = $root.children_iter();
+            $elem_check;
+            assert!($iter.next().is_none(), "Unexpected children");
+        }
     })
 )
 
@@ -66,6 +94,23 @@ macro_rules! expect_elem(
         let elem = next.unwrap().get_element();
         assert!(elem.is_some(), "Extected element but got other children");
         let cur = elem.unwrap();
+        {
+            let mut $iter = cur.children_iter();
+            $elem_check;
+            assert!($iter.next().is_none(), "Unexpected children");
+        }
+    });
+    ($iter:ident, $expected_name:expr, $attr_check:expr, $elem_check:expr) => ({
+        let next = ($iter).next();
+        assert!(next.is_some(), "Expected element but there is no further element");
+        let elem = next.unwrap().get_element();
+        assert!(elem.is_some(), "Extected element but got other children");
+        let cur = elem.unwrap();
+        {
+            let mut $iter = cur.attribute_iter();
+            $attr_check;
+            assert!($iter.next().is_none(), "Unexpected attribute");
+        }
         {
             let mut $iter = cur.children_iter();
             $elem_check;
@@ -120,3 +165,31 @@ fn test_subelements() {
     });
 }
 
+#[test]
+fn test_attributes() {
+    let xml = "<?xml version=\"1.0\"?> <test a=\"b\"> <![CDATA[test]]><a> <b test=\"a\" test2=\"c\"></b>aaa<!-- comment --></a><c/></test>".as_bytes();
+let doc = xml::read_memory(xml).unwrap();
+    let root = doc.get_root_element().unwrap();
+    expect_root_elem!(root, iter, ~"test", {
+        expect_attribute!(iter, ~"a", ~"b", {
+            expect_text!(iter, ~"b");
+        });
+    },{
+        expect_text!(iter, ~" ");
+        expect_cdata!(iter, ~"test");
+        expect_elem!(iter, ~"a", {}, {
+            expect_text!(iter, ~" ");
+            expect_elem!(iter, ~"b", {
+                expect_attribute!(iter, ~"test", ~"a", {
+                    expect_text!(iter, ~"a");
+                });
+                expect_attribute!(iter, ~"test2", ~"c", {
+                    expect_text!(iter, ~"c");
+                });
+            },{});
+            expect_text!(iter, ~"aaa");
+            expect_comment!(iter, ~" comment ");
+        });
+        expect_elem!(iter, ~"c", {}, {});
+    });
+}

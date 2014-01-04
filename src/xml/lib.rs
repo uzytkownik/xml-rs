@@ -37,6 +37,20 @@ pub trait TextNode {
 }
 
 /**
+ * An attribute of element.
+ */
+pub struct Attribute<'r> {
+    priv attr: &'r ffi::xmlAttr
+}
+
+/**
+ * Iterator over children of attribute
+ */
+pub struct AttributeChildrenIterator<'r> {
+    priv cur: Option<&'r ffi::xmlNode>
+}
+
+/**
  * A CDATA section.
  */
 pub struct CData<'r> {
@@ -72,10 +86,24 @@ pub struct ElementChildrenIterator<'r> {
 }
 
 /**
+ * Iterator over attributes of XML element
+ */
+pub struct ElementAttributeIterator<'r> {
+    priv cur: Option<&'r ffi::xmlAttr>
+}
+
+/**
  * Text inside an XML.
  */
 pub struct Text<'r> {
     priv node: &'r ffi::xmlNode
+}
+
+/**
+ * Possible children of an attribute.
+ */
+pub enum AttributeChild<'r> {
+    TextAttributeChild(Text<'r>)
 }
 
 /**
@@ -117,6 +145,33 @@ impl<'r> Comment<'r> {
     }
 }
 
+impl<'r> Attribute<'r> {
+    /**
+     * Gets the name of the attribute.
+     */
+    pub fn name(&self) -> ~str {
+        unsafe {std::str::raw::from_c_str(self.attr.name as *i8)}
+    }
+    /**
+     * Iterate over children
+     */
+    pub fn children_iter(&self) -> AttributeChildrenIterator<'r> {
+        AttributeChildrenIterator {
+            cur: ptr_to_option(self.attr.children).map(|cur| unsafe {&*cur})
+        }
+    }
+    /**
+     * Gets the value of the attribute
+     */
+    pub fn value(&self) -> ~str {
+        self.children_iter().map(|c| {
+            match c {
+                TextAttributeChild(t) => t.content()
+            }
+        }).to_owned_vec().concat()
+    }
+}
+
 impl<'r> Element<'r> {
     /**
      * Gets the name of the element.
@@ -131,6 +186,35 @@ impl<'r> Element<'r> {
         ElementChildrenIterator {
             cur: ptr_to_option(self.node.children).map(|cur| unsafe {&*cur})
         }
+    }
+    /**
+     * Iterate over arguments.
+     */
+    pub fn attribute_iter(&self) -> ElementAttributeIterator<'r> {
+        ElementAttributeIterator {
+            cur: ptr_to_option(self.node.properties).map(|cur| unsafe {&*cur})
+        }
+    }
+}
+
+impl<'r> Clone for AttributeChildrenIterator<'r> {
+    fn clone(&self) -> AttributeChildrenIterator<'r> {
+        AttributeChildrenIterator{cur: self.cur}
+    }
+}
+
+impl<'r> Iterator<AttributeChild<'r>> for AttributeChildrenIterator<'r> {
+    fn next(&mut self) -> Option<AttributeChild<'r>> {
+        self.cur.and_then(|cur| {
+            self.cur = unsafe {ptr_to_option(cur.next).map(|next| &*next)};
+            match cur._type {
+                ffi::TextNode => Some(TextAttributeChild(Text {node: cur})),
+                t => {
+                    error!("Unsupported type {}", t.to_str());
+                    self.next()
+                }
+            }
+        })
     }
 }
 
@@ -155,6 +239,38 @@ impl<'r> Iterator<ElementChild<'r>> for ElementChildrenIterator<'r> {
                 }
             }
         })
+    }
+}
+
+impl<'r> Clone for ElementAttributeIterator<'r> {
+    fn clone(&self) -> ElementAttributeIterator<'r> {
+        ElementAttributeIterator {cur: self.cur}
+    }
+}
+
+impl<'r> Iterator<Attribute<'r>> for ElementAttributeIterator<'r> {
+    fn next(&mut self) -> Option<Attribute<'r>> {
+        self.cur.and_then(|cur| {
+            self.cur = unsafe {ptr_to_option(cur.next).map(|next| &*next)};
+            Some(Attribute {attr: cur})
+        })
+    }
+}
+
+impl<'r> AttributeChild<'r> {
+    /// Check if children is text
+    pub fn is_text(self) -> bool {
+        match (self) {
+            TextAttributeChild(_) => true,
+            //_ => false
+        }
+    }
+    /// Return text if it is text
+    pub fn get_text(self) -> Option<Text<'r>> {
+        match (self) {
+            TextAttributeChild(t) => Some(t),
+            //_ => None
+        }
     }
 }
 
