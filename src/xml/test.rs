@@ -136,17 +136,22 @@ macro_rules! expect_text(
     });
 )
 
+fn read_memory(xml: &[u8]) -> Option<xml::Document> {
+    let mut reader = std::io::mem::BufReader::new(xml);
+    xml::Document::read(&mut reader)
+}
+
 #[test]
 fn test_simple_fail() {
     let xml = "<?xml version=\"1.0\"> <test />".as_bytes();
-    let doc = xml::read_memory(xml);
+    let doc = read_memory(xml);
     assert!(doc.is_none());
 }
 
 #[test]
 fn test_simple_parse() {
     let xml = "<?xml version=\"1.0\"?> <test />".as_bytes();
-    let doc = xml::read_memory(xml).unwrap();
+    let doc = read_memory(xml).unwrap();
     let root = doc.get_root_element().unwrap();
     expect_root_elem!(root, iter, "test", None, {}, {});
 }
@@ -154,7 +159,7 @@ fn test_simple_parse() {
 #[test]
 fn test_subelements() {
     let xml = "<?xml version=\"1.0\"?> <test> <![CDATA[test]]><a> <b></b>aaa<!-- comment --></a><c/></test>".as_bytes();
-    let doc = xml::read_memory(xml).unwrap();
+    let doc = read_memory(xml).unwrap();
     let root = doc.get_root_element().unwrap();
     expect_root_elem!(root, iter, "test", None, {}, {
         expect_text!(iter, " ");
@@ -172,7 +177,7 @@ fn test_subelements() {
 #[test]
 fn test_attributes() {
     let xml = "<?xml version=\"1.0\"?> <test a=\"b\"> <![CDATA[test]]><a> <b test=\"a\" test2=\"c\"></b>aaa<!-- comment --></a><c/></test>".as_bytes();
-    let doc = xml::read_memory(xml).unwrap();
+    let doc = read_memory(xml).unwrap();
     let root = doc.get_root_element().unwrap();
     expect_root_elem!(root, iter, "test", None, {
         expect_attribute!(iter, "a", None, "b", {
@@ -201,7 +206,7 @@ fn test_attributes() {
 #[test]
 fn test_ns() {
     let xml = "<?xml version=\"1.0\"?><h:html xmlns:h=\"http://www.w3.org/TR/html4/\"><head xmlns=\"http://www.w3.org/TR/html4/\"><meta /></head><h:body xml:lang=\"en\"><my:elem /></h:body></h:html>".as_bytes();
-    let doc = xml::read_memory(xml).unwrap();
+    let doc = read_memory(xml).unwrap();
     let root = doc.get_root_element().unwrap();
     let html4 = "http://www.w3.org/TR/html4/";
     expect_root_elem!(root, iter, "html", Some((Some("h"), html4)), {}, {
@@ -216,4 +221,91 @@ fn test_ns() {
             expect_elem!(iter, "my:elem", None, {}, {});
         });
     });
+}
+
+#[test]
+fn test_write() {
+    use std::io::Decorator;
+    let xml = "<?xml version=\"1.0\"?>\n<h:html xmlns:h=\"http://www.w3.org/TR/html4/\"><head xmlns=\"http://www.w3.org/TR/html4/\"><meta/></head><h:body xml:lang=\"en\"><my:elem/></h:body></h:html>\n".as_bytes();
+    let doc = read_memory(xml).unwrap();
+    let mut writer = std::io::mem::MemWriter::new();
+    doc.write(&mut writer);
+    assert_eq!(std::str::from_utf8(writer.inner_ref().as_slice()), std::str::from_utf8(xml))
+}
+
+#[test]
+fn test_read_condition() {
+    use std::io::{BrokenPipe,IoError,io_error};
+    struct MyReader<'t> {
+        buf: &'t [u8],
+        pos: uint,
+        error: &'t IoError
+    }
+    impl<'t> MyReader<'t> {
+        fn new(buf: &'t [u8], error: &'t IoError) -> MyReader<'t> {
+            MyReader {
+                buf: buf,
+                pos: 0,
+                error: error
+            }
+        }
+    }
+    impl<'t> Reader for MyReader<'t> {
+        fn read(&mut self, buf: &mut [u8]) -> Option<uint> {
+            if self.eof() {return None;}
+            let write_len = std::num::min(buf.len(), self.buf.len() - self.pos);
+            {
+                let input = self.buf.slice(self.pos, self.pos + write_len);
+                let output = buf.mut_slice(0, write_len);
+                assert_eq!(input.len(), output.len());
+                std::vec::bytes::copy_memory(output, input);
+            }
+            self.pos += write_len;
+            assert!(self.pos <= self.buf.len());
+            if (self.pos == self.buf.len()) {
+                let error = IoError {
+                    kind: self.error.kind,
+                    desc: self.error.desc,
+                    detail: self.error.detail.clone()
+                };
+                io_error::cond.raise(error);
+            }
+            return Some(write_len);
+        }
+        fn eof(&mut self) -> bool { self.pos == self.buf.len() }
+    }
+    let xml = "<?xml version=\"1.0\"?>\n<h:html xmlns:h=\"http://www.w3.org/TR/html4/\"><head xmlns=\"http://www.w3.org/TR/html4/\">".as_bytes();
+    let error = IoError {kind: BrokenPipe, desc: "Test error", detail: None};
+    let mut reader = MyReader::new(xml, &error);
+    let mut thrown = false;
+    let trap = io_error::cond.trap(|err| {
+        assert_eq!(err.kind, error.kind);
+        assert_eq!(err.desc, error.desc);
+        assert_eq!(err.detail, error.detail);
+        thrown = true;
+    });
+    trap.inside(|| {
+        xml::Document::read(&mut reader)
+    });
+    assert!(thrown);
+}
+
+#[test]
+fn test_write_condition() {
+    use std::io::{OtherIoError,io_error};
+    let xml = "<?xml version=\"1.0\"?>\n<h:html xmlns:h=\"http://www.w3.org/TR/html4/\"><head xmlns=\"http://www.w3.org/TR/html4/\"><meta/></head><h:body xml:lang=\"en\"><my:elem/></h:body></h:html>\n".as_bytes();
+    let doc = read_memory(xml).unwrap();
+    let mut out = std::vec::with_capacity(20);
+    let mut thrown = false;
+    let size = {
+        let mut writer = std::io::mem::BufWriter::new(out);
+        io_error::cond.trap(|err| {
+            assert_eq!(err.kind, OtherIoError);
+            thrown = true;
+        }).inside(|| {
+            doc.write(&mut writer);
+        });
+        writer.tell() as uint
+    };
+    assert_eq!(out.slice_to(size), xml.slice_to(size));
 }

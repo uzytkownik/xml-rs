@@ -20,7 +20,7 @@
  * THE SOFTWARE.
  */
 
-use std::libc::{c_char, c_int, c_uchar, c_ushort, c_void};
+use std::libc::{c_char, c_int, c_long, c_uchar, c_ushort, c_void};
 
 pub type xmlChar = c_uchar;
 
@@ -278,17 +278,32 @@ pub struct xmlNs {
     context: *xmlDoc
 }
 
+enum xmlSaveCtxt {}
 
 #[link(name = "xml2")]
 extern "C" {
     pub fn xmlCheckVersion(version: c_int);
 
     // Parser API
-    pub fn xmlReadMemory(buffer: *c_uchar, size: c_int, name: *c_char, encoding: *c_char, options: c_int) -> *xmlDoc;
+    pub fn xmlReadIO(ioread: extern "C" fn (context: *mut c_void, buffer: *mut c_char, len: c_int) -> c_int,
+                     ioclose: extern "C" fn (context: *mut c_void) -> c_int,
+                     context: *mut c_void,
+                     url: *c_char,
+                     encoding: *c_char,
+                     options: c_int) -> *xmlDoc;
 
     // Tree API
     pub fn xmlDocGetRootElement(doc: *xmlDoc) -> *xmlNode;
     pub fn xmlFreeDoc(doc: *xmlDoc);
+
+    // XML Save API
+    pub fn xmlSaveClose(ctx: *xmlSaveCtxt) -> c_int;
+    pub fn xmlSaveDoc(ctx: *xmlSaveCtxt, doc: *xmlDoc) -> c_long;
+    pub fn xmlSaveToIO(iowrite: extern "C" fn (context: *mut c_void, buffer: *c_char, len: c_int) -> c_int,
+                       ioclose: extern "C" fn (context: *mut c_void) -> c_int,
+                       context: *mut c_void,
+                       encoding: *c_char,
+                       options: c_int) -> *xmlSaveCtxt;
 }
 
 pub static xmlVersion : c_int = 20901;

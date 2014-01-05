@@ -140,6 +140,103 @@ impl Document {
             ptr_to_option(ffi::xmlDocGetRootElement(self.doc)).map(|elem| Element{node: &*elem})
         }
     }
+
+    /**
+     * Parse the document from reader.
+     */
+    pub fn read(reader: &mut Reader) -> Option<Document> {
+        use std::io::{IoError,EndOfFile,io_error};
+        use std::libc::{c_char, c_int, c_void};
+        use std::ptr::{null,to_mut_unsafe_ptr};
+        unsafe {ffi::xmlCheckVersion(ffi::xmlVersion)};
+        struct Context<'t> {
+            reader: &'t mut Reader,
+            ioerror: Option<IoError>
+        }
+        unsafe fn get_context<'t>(context_ptr: &'t *mut c_void) -> &'t mut Context<'t> {
+            &mut *(context_ptr.clone() as *mut Context<'t>)
+        }
+        extern "C" fn ioread(context_ptr: *mut c_void, buf: *mut c_char, len: c_int) -> c_int {
+            unsafe {
+                let context = get_context(&context_ptr);
+                match context.ioerror {
+                    Some(_) => -1,
+                    None => io_error::cond.trap(|err| {
+                            if err.kind != EndOfFile {
+                                context.ioerror = Some(err)
+                            }
+                        }).inside(|| {
+                            std::vec::raw::mut_buf_as_slice(buf as *mut u8, len as uint, |v| {
+                                context.reader.read(v).map_default(-1, |x| x as c_int)
+                            })
+                        })
+                }
+            }
+        }
+        extern "C" fn ioclose(_: *mut c_void) -> c_int {0};
+        let mut context = Context {
+            reader: reader,
+            ioerror: None
+        };
+        let doc = unsafe {
+            let ctx = &mut context;
+            ffi::xmlReadIO(ioread, ioclose,
+                           to_mut_unsafe_ptr(ctx) as *mut c_void,
+                           null(), null(),
+                           64 | 32 /* No errors or warnings for now */)
+        };
+        match (context.ioerror, ptr_to_option(doc)) {
+            (Some(err), _) => {io_error::cond.raise(err); None},
+            (None, None) => None,
+            (None, Some(doc)) => Some(Document {doc: doc}),
+        }
+    }
+
+    /**
+     * Write document to writer
+     */
+    pub fn write(&self, writer: &mut Writer) {
+        use std::io::{IoError,io_error};
+        use std::libc::{c_char, c_int, c_void};
+        use std::ptr::{null,to_mut_unsafe_ptr};
+        struct Context<'t> {
+             writer: &'t mut Writer,
+             ioerror: Option<IoError>
+        }
+        unsafe fn get_context<'t>(context_ptr: &'t *mut c_void) -> &'t mut Context<'t> {
+            &mut *(context_ptr.clone() as *mut Context<'t>)
+        }
+        extern "C" fn iowrite(context_ptr: *mut c_void, buf: *c_char, len: c_int) -> c_int {
+            unsafe {
+                let context = get_context(&context_ptr);
+                let vec = std::vec::raw::from_buf_raw(buf as *u8, len as uint);
+                io_error::cond.trap(|err| (*context).ioerror = Some(err)).inside(|| {
+                    context.writer.write(vec);
+                });
+                context.ioerror.as_ref().map_default(len, |_| -1)
+            }
+        }
+        extern "C" fn ioclose(context_ptr: *mut c_void) -> c_int {
+            unsafe {
+                let context = get_context(&context_ptr);
+                io_error::cond.trap(|err| (*context).ioerror = Some(err)).inside(|| {
+                    context.writer.flush();
+                });
+                context.ioerror.as_ref().map_default(0, |_| -1)
+            }
+        }
+        let mut context = Context {
+            writer: writer,
+            ioerror: None
+        };
+        unsafe {
+            let ctx = &mut context;
+            let save_ctx = ffi::xmlSaveToIO(iowrite, ioclose, to_mut_unsafe_ptr(ctx) as *mut c_void, null(), 0);
+            ffi::xmlSaveDoc(save_ctx, self.doc);
+            ffi::xmlSaveClose(save_ctx);
+        }
+        context.ioerror.map(|e| {io_error::cond.raise(e)});
+    }
 }
 
 #[unsafe_destructor]
@@ -396,30 +493,6 @@ impl<'r> TextNode for Text<'r> {
             std::str::raw::from_c_str(self.node.content as *i8)
         }
     }
-}
-
-/**
- * Reads the buffer treating it as if it came from url.
- *
- * It returns the document if buffer contained valid XML.
- */
-pub fn read_memory_with_url(buffer: &[u8], url: Option<&str>) -> Option<Document> {
-    unsafe {
-        use std::libc::c_int;
-        use std::ptr::null;
-        ffi::xmlCheckVersion(ffi::xmlVersion);
-        let doc = ffi::xmlReadMemory(buffer.as_ptr(), buffer.len() as c_int,
-                                     url.map(|x| x.as_ptr()).unwrap_or(null()) as *i8,
-                                     null(), 64 | 32 /* No errors or warnings for now */);
-        ptr_to_option(doc).map(|doc| Document {doc: doc})
-    }
-}
-
-/**
- * Reads the buffer and return the document if it contains valid XML.
- */
-pub fn read_memory(buffer: &[u8]) -> Option<Document> {
-    read_memory_with_url(buffer, None)
 }
 
 fn ptr_to_option<T>(ptr: *T) -> Option<*T> {
