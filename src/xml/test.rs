@@ -25,13 +25,18 @@
 extern mod xml;
 
 macro_rules! expect_attribute(
-    ($iter:ident, $expected_name:expr, $expected_value:expr, $attribute_check:expr) => ({
+    ($iter:ident, $expected_name:expr, $expected_ns:expr, $expected_value:expr, $attribute_check:expr) => ({
         let next = ($iter).next();
         assert!(next.is_some(), "Expected next attribute - there is none");
         let attr = next.unwrap();
         let name = attr.name();
         let value = attr.value();
         assert_eq!(name.slice_from(0), $expected_name);
+        let expected_ns : Option<(Option<&str>, &str)> = $expected_ns;
+        let prefix = attr.namespace().map(|x| x.prefix());
+        let namespace = attr.namespace().map(|x| x.href());
+        assert_eq!(prefix.as_ref().map(|x| x.as_ref().map(|y| y.slice_from(0))), expected_ns.as_ref().map(|x| x.n0_ref().clone()));
+        assert_eq!(namespace.as_ref().map(|x| x.slice_from(0)), expected_ns.as_ref().map(|x| x.n1_ref().clone()));
         assert_eq!(value.slice_from(0), $expected_value);
         {
             let mut $iter = attr.children_iter();
@@ -68,18 +73,15 @@ macro_rules! expect_comment(
 
 
 macro_rules! expect_root_elem(
-    ($root:expr, $iter:ident, $expected_name:expr, $elem_check:expr) => ({
+    ($root:ident, $iter:ident, $expected_name:expr, $expected_ns:expr, $attr_check:expr, $elem_check:expr) => ({
+        use xml::NamedNode;
         let name = $root.name();
         assert_eq!(name.slice_from(0), $expected_name);
-        {
-            let mut $iter = $root.children_iter();
-            $elem_check;
-            assert!($iter.next().is_none(), "Unexpected children");
-        }
-    });
-    ($root:expr, $iter:ident, $expected_name:expr, $attr_check:expr, $elem_check:expr) => ({
-        let name = $root.name();
-        assert_eq!(name.slice_from(0), $expected_name);
+        let expected_ns : Option<(Option<&str>, &str)> = $expected_ns;
+        let prefix = ($root).namespace().map(|x| x.prefix());
+        let namespace = ($root).namespace().map(|x| x.href());
+        assert_eq!(prefix.as_ref().map(|x| x.as_ref().map(|y| y.slice_from(0))), expected_ns.as_ref().map(|x| x.n0_ref().clone()));
+        assert_eq!(namespace.as_ref().map(|x| x.slice_from(0)), expected_ns.as_ref().map(|x| x.n1_ref().clone()));
         {
             let mut $iter = $root.attribute_iter();
             $attr_check;
@@ -94,24 +96,19 @@ macro_rules! expect_root_elem(
 )
 
 macro_rules! expect_elem(
-    ($iter:ident, $expected_name:expr, $elem_check:expr) => ({
+    ($iter:ident, $expected_name:expr, $expected_ns:expr, $attr_check:expr, $elem_check:expr) => ({
         let next = ($iter).next();
         assert!(next.is_some(), "Expected element but there is no further element");
         let elem = next.unwrap().get_element();
         assert!(elem.is_some(), "Extected element but got other children");
         let cur = elem.unwrap();
-        {
-            let mut $iter = cur.children_iter();
-            $elem_check;
-            assert!($iter.next().is_none(), "Unexpected children");
-        }
-    });
-    ($iter:ident, $expected_name:expr, $attr_check:expr, $elem_check:expr) => ({
-        let next = ($iter).next();
-        assert!(next.is_some(), "Expected element but there is no further element");
-        let elem = next.unwrap().get_element();
-        assert!(elem.is_some(), "Extected element but got other children");
-        let cur = elem.unwrap();
+        let name = cur.name();
+        assert_eq!(name.slice_from(0), $expected_name);
+        let expected_ns : Option<(Option<&str>, &str)> = $expected_ns;
+        let prefix = cur.namespace().map(|x| x.prefix());
+        let namespace = cur.namespace().map(|x| x.href());
+        assert_eq!(prefix.as_ref().map(|x| x.as_ref().map(|y| y.slice_from(0))), expected_ns.as_ref().map(|x| x.n0_ref().clone()));
+        assert_eq!(namespace.as_ref().map(|x| x.slice_from(0)), expected_ns.as_ref().map(|x| x.n1_ref().clone()));        
         {
             let mut $iter = cur.attribute_iter();
             $attr_check;
@@ -151,7 +148,7 @@ fn test_simple_parse() {
     let xml = "<?xml version=\"1.0\"?> <test />".as_bytes();
     let doc = xml::read_memory(xml).unwrap();
     let root = doc.get_root_element().unwrap();
-    expect_root_elem!(root, iter, "test", {});
+    expect_root_elem!(root, iter, "test", None, {}, {});
 }
 
 #[test]
@@ -159,44 +156,64 @@ fn test_subelements() {
     let xml = "<?xml version=\"1.0\"?> <test> <![CDATA[test]]><a> <b></b>aaa<!-- comment --></a><c/></test>".as_bytes();
     let doc = xml::read_memory(xml).unwrap();
     let root = doc.get_root_element().unwrap();
-    expect_root_elem!(root, iter, "test", {
+    expect_root_elem!(root, iter, "test", None, {}, {
         expect_text!(iter, " ");
         expect_cdata!(iter, "test");
-        expect_elem!(iter, "a", {
+        expect_elem!(iter, "a", None, {}, {
             expect_text!(iter, " ");
-            expect_elem!(iter, "b", {});
+            expect_elem!(iter, "b", None, {}, {});
             expect_text!(iter, "aaa");
             expect_comment!(iter, " comment ");
         });
-        expect_elem!(iter, "c", {});
+        expect_elem!(iter, "c", None, {}, {});
     });
 }
 
 #[test]
 fn test_attributes() {
     let xml = "<?xml version=\"1.0\"?> <test a=\"b\"> <![CDATA[test]]><a> <b test=\"a\" test2=\"c\"></b>aaa<!-- comment --></a><c/></test>".as_bytes();
-let doc = xml::read_memory(xml).unwrap();
+    let doc = xml::read_memory(xml).unwrap();
     let root = doc.get_root_element().unwrap();
-    expect_root_elem!(root, iter, "test", {
-        expect_attribute!(iter, "a", "b", {
+    expect_root_elem!(root, iter, "test", None, {
+        expect_attribute!(iter, "a", None, "b", {
             expect_text!(iter, "b");
         });
     },{
         expect_text!(iter, " ");
         expect_cdata!(iter, "test");
-        expect_elem!(iter, "a", {}, {
+        expect_elem!(iter, "a", None, {}, {
             expect_text!(iter, " ");
-            expect_elem!(iter, "b", {
-                expect_attribute!(iter, "test", "a", {
+            expect_elem!(iter, "b", None, {
+                expect_attribute!(iter, "test", None, "a", {
                     expect_text!(iter, "a");
                 });
-                expect_attribute!(iter, "test2", "c", {
+                expect_attribute!(iter, "test2", None, "c", {
                     expect_text!(iter, "c");
                 });
             },{});
             expect_text!(iter, "aaa");
             expect_comment!(iter, " comment ");
         });
-        expect_elem!(iter, "c", {}, {});
+        expect_elem!(iter, "c", None, {}, {});
+    });
+}
+
+#[test]
+fn test_ns() {
+    let xml = "<?xml version=\"1.0\"?><h:html xmlns:h=\"http://www.w3.org/TR/html4/\"><head xmlns=\"http://www.w3.org/TR/html4/\"><meta /></head><h:body xml:lang=\"en\"><my:elem /></h:body></h:html>".as_bytes();
+    let doc = xml::read_memory(xml).unwrap();
+    let root = doc.get_root_element().unwrap();
+    let html4 = "http://www.w3.org/TR/html4/";
+    expect_root_elem!(root, iter, "html", Some((Some("h"), html4)), {}, {
+        expect_elem!(iter, "head", Some((None, html4)), {}, {
+            expect_elem!(iter, "meta", Some((None, html4)), {}, {});
+        });
+        expect_elem!(iter, "body", Some((Some("h"), html4)), {
+            expect_attribute!(iter, "lang", Some((Some("xml"), "http://www.w3.org/XML/1998/namespace")), "en", {
+                expect_text!(iter, "en");
+            });
+        }, {
+            expect_elem!(iter, "my:elem", None, {}, {});
+        });
     });
 }

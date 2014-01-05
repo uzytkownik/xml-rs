@@ -273,7 +273,7 @@ pub struct xmlNs {
     next: *xmlNs,
     _type: xmlElementType,
     href: *xmlChar,
-    prefix: xmlChar,
+    prefix: *xmlChar,
     private: *c_void,
     context: *xmlDoc
 }

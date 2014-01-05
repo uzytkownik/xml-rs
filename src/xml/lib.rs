@@ -37,6 +37,14 @@ pub trait TextNode {
 }
 
 /**
+ * An XML node with a name and namespace.
+ */
+pub trait NamedNode<'r> {
+    fn name(self) -> ~str;
+    fn namespace(self) -> Option<Namespace<'r>>;
+}
+
+/**
  * An attribute of element.
  */
 pub struct Attribute<'r> {
@@ -90,6 +98,13 @@ pub struct ElementChildrenIterator<'r> {
  */
 pub struct ElementAttributeIterator<'r> {
     priv cur: Option<&'r ffi::xmlAttr>
+}
+
+/**
+ * An XML namespace
+ */
+pub struct Namespace<'r> {
+    priv ns: &'r ffi::xmlNs
 }
 
 /**
@@ -147,12 +162,6 @@ impl<'r> Comment<'r> {
 
 impl<'r> Attribute<'r> {
     /**
-     * Gets the name of the attribute.
-     */
-    pub fn name(&self) -> ~str {
-        unsafe {std::str::raw::from_c_str(self.attr.name as *i8)}
-    }
-    /**
      * Iterate over children
      */
     pub fn children_iter(&self) -> AttributeChildrenIterator<'r> {
@@ -174,12 +183,6 @@ impl<'r> Attribute<'r> {
 
 impl<'r> Element<'r> {
     /**
-     * Gets the name of the element.
-     */
-    pub fn name(&self) -> ~str {
-        unsafe {std::str::raw::from_c_str(self.node.name as *i8)}
-    }
-    /**
      * Iterate over children
      */
     pub fn children_iter(&self) -> ElementChildrenIterator<'r> {
@@ -193,6 +196,25 @@ impl<'r> Element<'r> {
     pub fn attribute_iter(&self) -> ElementAttributeIterator<'r> {
         ElementAttributeIterator {
             cur: ptr_to_option(self.node.properties).map(|cur| unsafe {&*cur})
+        }
+    }
+}
+
+impl<'r> Namespace<'r> {
+    /**
+     * Get the namespace URI
+     */
+    pub fn href(&self) -> ~str {
+        unsafe {
+            std::str::raw::from_c_str(self.ns.href as *i8)
+        }
+    }
+    /**
+     * Get the namespace prefix
+     */
+    pub fn prefix(&self) -> Option<~str> {
+        unsafe {
+            ptr_to_option(self.ns.prefix).map(|p| std::str::raw::from_c_str(p as *i8))
         }
     }
 }
@@ -333,10 +355,37 @@ impl<'r> ElementChild<'r> {
     }
 }
 
+impl<'r> NamedNode<'r> for Attribute<'r> {
+    fn name(self) -> ~str {
+        unsafe {
+            std::str::raw::from_c_str(self.attr.name as *i8)
+        }
+    }
+    fn namespace(self) -> Option<Namespace<'r>> {
+        unsafe {
+            ptr_to_option(self.attr.ns).map(|ns| Namespace{ns: &*ns})
+        }
+    }
+}
+
+
 impl<'r> TextNode for CData<'r> {
     fn content(&self) -> ~str {
         unsafe {
             std::str::raw::from_c_str(self.node.content as *i8)
+        }
+    }
+}
+
+impl<'r> NamedNode<'r> for Element<'r> {
+    fn name(self) -> ~str {
+        unsafe {
+            std::str::raw::from_c_str(self.node.name as *i8)
+        }
+    }
+    fn namespace(self) -> Option<Namespace<'r>> {
+        unsafe {
+            ptr_to_option(self.node.ns).map(|ns| Namespace{ns: &*ns})
         }
     }
 }
