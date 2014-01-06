@@ -39,15 +39,15 @@ pub trait TextNode {
 /**
  * An XML node with a name and namespace.
  */
-pub trait NamedNode<'r> {
-    fn name(self) -> ~str;
-    fn namespace(self) -> Option<Namespace<'r>>;
+pub trait NamedNode {
+    fn name(&self) -> ~str;
+    fn namespace<'r>(&'r self) -> Option<BorrowedNamespace<'r>>;
 }
 
 /**
  * An attribute of element.
  */
-pub struct Attribute<'r> {
+pub struct BorrowedAttribute<'r> {
     priv attr: &'r ffi::xmlAttr
 }
 
@@ -61,14 +61,14 @@ pub struct AttributeChildrenIterator<'r> {
 /**
  * A CDATA section.
  */
-pub struct CData<'r> {
+pub struct BorrowedCData<'r> {
     priv node: &'r ffi::xmlNode
 }
 
 /**
  * An XML comment.
  */
-pub struct Comment<'r> {
+pub struct BorrowedComment<'r> {
     priv node: &'r ffi::xmlNode
 }
 
@@ -82,7 +82,7 @@ pub struct Document {
 /**
  * An XML element
  */
-pub struct Element<'r> {
+pub struct BorrowedElement<'r> {
     priv node: &'r ffi::xmlNode
 }
 
@@ -103,14 +103,14 @@ pub struct ElementAttributeIterator<'r> {
 /**
  * An XML namespace
  */
-pub struct Namespace<'r> {
+pub struct BorrowedNamespace<'r> {
     priv ns: &'r ffi::xmlNs
 }
 
 /**
  * Text inside an XML.
  */
-pub struct Text<'r> {
+pub struct BorrowedText<'r> {
     priv node: &'r ffi::xmlNode
 }
 
@@ -118,26 +118,26 @@ pub struct Text<'r> {
  * Possible children of an attribute.
  */
 pub enum AttributeChild<'r> {
-    TextAttributeChild(Text<'r>)
+    TextAttributeChild(BorrowedText<'r>)
 }
 
 /**
  * Possible children of an element.
  */
 pub enum ElementChild<'r> {
-    ElementElementChild(Element<'r>),
-    TextElementChild(Text<'r>),
-    CDataElementChild(CData<'r>),
-    CommentElementChild(Comment<'r>)
+    ElementElementChild(BorrowedElement<'r>),
+    TextElementChild(BorrowedText<'r>),
+    CDataElementChild(BorrowedCData<'r>),
+    CommentElementChild(BorrowedComment<'r>)
 }
 
 impl Document {
     /**
      * Find the root element, if it exists.
      */
-    pub fn get_root_element<'r>(&'r self) -> Option<Element<'r>> {
+    pub fn get_root_element<'r>(&'r self) -> Option<BorrowedElement<'r>> {
         unsafe {
-            ptr_to_option(ffi::xmlDocGetRootElement(self.doc)).map(|elem| Element{node: &*elem})
+            ptr_to_option(ffi::xmlDocGetRootElement(self.doc)).map(|elem| BorrowedElement{node: &*elem})
         }
     }
 
@@ -248,7 +248,7 @@ impl Drop for Document {
     }
 }
 
-impl<'r> Comment<'r> {
+impl<'r> BorrowedComment<'r> {
     /// Get comment contents.
     pub fn comment(&self) -> ~str {
         unsafe {
@@ -257,7 +257,7 @@ impl<'r> Comment<'r> {
     }
 }
 
-impl<'r> Attribute<'r> {
+impl<'r> BorrowedAttribute<'r> {
     /**
      * Iterate over children
      */
@@ -278,7 +278,7 @@ impl<'r> Attribute<'r> {
     }
 }
 
-impl<'r> Element<'r> {
+impl<'r> BorrowedElement<'r> {
     /**
      * Iterate over children
      */
@@ -297,7 +297,7 @@ impl<'r> Element<'r> {
     }
 }
 
-impl<'r> Namespace<'r> {
+impl<'r> BorrowedNamespace<'r> {
     /**
      * Get the namespace URI
      */
@@ -327,7 +327,7 @@ impl<'r> Iterator<AttributeChild<'r>> for AttributeChildrenIterator<'r> {
         self.cur.and_then(|cur| {
             self.cur = unsafe {ptr_to_option(cur.next).map(|next| &*next)};
             match cur._type {
-                ffi::TextNode => Some(TextAttributeChild(Text {node: cur})),
+                ffi::TextNode => Some(TextAttributeChild(BorrowedText {node: cur})),
                 t => {
                     error!("Unsupported type {}", t.to_str());
                     self.next()
@@ -348,10 +348,10 @@ impl<'r> Iterator<ElementChild<'r>> for ElementChildrenIterator<'r> {
         self.cur.and_then(|cur| {
             self.cur = unsafe {ptr_to_option(cur.next).map(|next| &*next)};
             match cur._type {
-                ffi::ElementNode => Some(ElementElementChild(Element {node: cur})),
-                ffi::TextNode => Some(TextElementChild(Text {node: cur})),
-                ffi::CDataSectionNode => Some(CDataElementChild(CData {node: cur})),
-                ffi::CommentNode => Some(CommentElementChild(Comment {node: cur})),
+                ffi::ElementNode => Some(ElementElementChild(BorrowedElement {node: cur})),
+                ffi::TextNode => Some(TextElementChild(BorrowedText {node: cur})),
+                ffi::CDataSectionNode => Some(CDataElementChild(BorrowedCData {node: cur})),
+                ffi::CommentNode => Some(CommentElementChild(BorrowedComment {node: cur})),
                 t => {
                     error!("Unsupported type {}", t.to_str());
                     self.next()
@@ -367,11 +367,11 @@ impl<'r> Clone for ElementAttributeIterator<'r> {
     }
 }
 
-impl<'r> Iterator<Attribute<'r>> for ElementAttributeIterator<'r> {
-    fn next(&mut self) -> Option<Attribute<'r>> {
+impl<'r> Iterator<BorrowedAttribute<'r>> for ElementAttributeIterator<'r> {
+    fn next(&mut self) -> Option<BorrowedAttribute<'r>> {
         self.cur.and_then(|cur| {
             self.cur = unsafe {ptr_to_option(cur.next).map(|next| &*next)};
-            Some(Attribute {attr: cur})
+            Some(BorrowedAttribute {attr: cur})
         })
     }
 }
@@ -385,7 +385,7 @@ impl<'r> AttributeChild<'r> {
         }
     }
     /// Return text if it is text
-    pub fn get_text(self) -> Option<Text<'r>> {
+    pub fn get_text(self) -> Option<BorrowedText<'r>> {
         match (self) {
             TextAttributeChild(t) => Some(t),
             //_ => None
@@ -423,28 +423,28 @@ impl<'r> ElementChild<'r> {
         }
     }
     /// Get element if it is an element.
-    pub fn get_element(self) -> Option<Element<'r>> {
+    pub fn get_element(self) -> Option<BorrowedElement<'r>> {
         match (self) {
             ElementElementChild(e) => Some(e),
             _ => None
         }
     }
     /// Get text if it is text.
-    pub fn get_text(self) -> Option<Text<'r>> {
+    pub fn get_text(self) -> Option<BorrowedText<'r>> {
         match (self) {
             TextElementChild(t) => Some(t),
             _ => None
         }
     }
     /// Get cdata section if it is cdata section.
-    pub fn get_cdata(self) -> Option<CData<'r>> {
+    pub fn get_cdata(self) -> Option<BorrowedCData<'r>> {
         match (self) {
             CDataElementChild(cd) => Some(cd),
             _ => None
         }
     }
     // Get comment if it is a comment.
-    pub fn get_comment(self) -> Option<Comment<'r>> {
+    pub fn get_comment(self) -> Option<BorrowedComment<'r>> {
     match (self) {
             CommentElementChild(c) => Some(c),
             _ => None
@@ -452,21 +452,21 @@ impl<'r> ElementChild<'r> {
     }
 }
 
-impl<'r> NamedNode<'r> for Attribute<'r> {
-    fn name(self) -> ~str {
+impl<'r> NamedNode for BorrowedAttribute<'r> {
+    fn name(&self) -> ~str {
         unsafe {
             std::str::raw::from_c_str(self.attr.name as *i8)
         }
     }
-    fn namespace(self) -> Option<Namespace<'r>> {
+    fn namespace<'t>(&'t self) -> Option<BorrowedNamespace<'t>> {
         unsafe {
-            ptr_to_option(self.attr.ns).map(|ns| Namespace{ns: &*ns})
+            ptr_to_option(self.attr.ns).map(|ns| BorrowedNamespace{ns: &*ns})
         }
     }
 }
 
 
-impl<'r> TextNode for CData<'r> {
+impl<'r> TextNode for BorrowedCData<'r> {
     fn content(&self) -> ~str {
         unsafe {
             std::str::raw::from_c_str(self.node.content as *i8)
@@ -474,20 +474,20 @@ impl<'r> TextNode for CData<'r> {
     }
 }
 
-impl<'r> NamedNode<'r> for Element<'r> {
-    fn name(self) -> ~str {
+impl<'r> NamedNode for BorrowedElement<'r> {
+    fn name(&self) -> ~str {
         unsafe {
             std::str::raw::from_c_str(self.node.name as *i8)
         }
     }
-    fn namespace(self) -> Option<Namespace<'r>> {
+    fn namespace<'t>(&'t self) -> Option<BorrowedNamespace<'t>> {
         unsafe {
-            ptr_to_option(self.node.ns).map(|ns| Namespace{ns: &*ns})
+            ptr_to_option(self.node.ns).map(|ns| BorrowedNamespace{ns: &*ns})
         }
     }
 }
 
-impl<'r> TextNode for Text<'r> {
+impl<'r> TextNode for BorrowedText<'r> {
     fn content(&self) -> ~str {
         unsafe {
             std::str::raw::from_c_str(self.node.content as *i8)
